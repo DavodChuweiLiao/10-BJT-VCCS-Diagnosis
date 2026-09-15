@@ -1,5 +1,16 @@
 # 10-BJT-VCCS-Diagnosis
 
+## 🔑 TL;DR
+
+**Precision ±10–12.5A analog current driver for magnetic bias coils in a cold-atom/MOT physics experiment, sub-100µs response.**
+
+- 🔧 **Diagnosed & recovered** a dead legacy MOSFET/IGBT current-source prototype — traced a failed IGBT gate driver, resolved ground-loop and thermal issues
+- 🔁 **Redesigned from scratch**: precision op-amp (OPA455) + discrete BJT push-pull output stage, replacing the old MOSFET/IGBT topology
+- 🛡️ **Added a 5-diode protection network** to prevent transistor degradation from reverse-bias stress during power cycling
+- 🚧 **Status:** board fabricated, currently in bring-up — actively debugging an open 5A idle-current issue (ground loop vs. bias runaway)
+
+---
+
 ![https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/Layout.png?raw=true](https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/Layout.png?raw=true)
 ![https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/Screenshot%202026-09-14%20211057.png?raw=true](https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/Screenshot%202026-09-14%20211057.png?raw=true)
 ![https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/actualboard.jpg?raw=true](https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/actualboard.jpg?raw=true)
