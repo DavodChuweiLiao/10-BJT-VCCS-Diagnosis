@@ -1,5 +1,18 @@
 # Precision Bias Coil Current Driver — Project README
 
+## 🔑 TL;DR
+
+**Precision ±10–12.5A analog current driver for magnetic bias coils in a cold-atom/MOT physics experiment, sub-100µs response.**
+
+- 🔧 **Diagnosed & recovered** a dead legacy MOSFET/IGBT current-source prototype — traced a failed IGBT gate driver, resolved ground-loop and thermal issues
+- 🔁 **Redesigned from scratch**: precision op-amp (OPA455) + discrete BJT push-pull output stage, replacing the old MOSFET/IGBT topology
+- 🛡️ **Added a 5-diode protection network** to prevent transistor degradation from reverse-bias stress during power cycling
+- ✅ **Ground loop on new board — resolved**: switched from a shared bipolar PSU to individual PSUs per rail
+- 🔴 **Root cause found for 2nd bring-up fault**: −30V rail was pinned to max current regardless of tuning — traced to **D5 and D6 wired backwards** (design-file-level diode orientation error, not per-unit damage). Final confirmation (direct voltage measurement + physical inspection) still pending.
+- 🚧 **Status:** root cause identified, rework/re-verification in progress
+
+---
+
 **Owner:** Chuwei (David) Liao
 **System purpose:** Generate stable, fast-switching, low-ripple current through magnetic bias coils (X, Y, Z, and MOT) for a cold-atom / magneto-optical trap experiment. Command is an analog setpoint voltage; each axis needs bidirectional current up to ~10-12.5A with sub-100µs response.
 
