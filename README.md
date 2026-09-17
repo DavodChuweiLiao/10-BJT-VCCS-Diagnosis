@@ -15,7 +15,7 @@
 
 ![https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/Layout.png?raw=true](https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/Layout.png?raw=true)
 ![https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/Screenshot%202026-09-14%20211057.png?raw=true](https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/Screenshot%202026-09-14%20211057.png?raw=true)
-![https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/actualboard.jpg?raw=true](https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/actualboard.jpg?raw=true)
+[![https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/actualboard.jpg?raw=true](https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/actualboard.jpg?raw=true)](https://github.com/DavodChuweiLiao/10-BJT-VCCS-Diagnosis/blob/main/Screenshot%202026-09-16%20231345.png?raw=true)
 
 **Owner:** Chuwei (David) Liao
 **System purpose:** Generate stable, fast-switching, low-ripple current through magnetic bias coils (X, Y, Z, and MOT) for a cold-atom / magneto-optical trap experiment. Command is an analog setpoint voltage; each axis needs bidirectional current up to ~10-12.5A with sub-100µs response.
