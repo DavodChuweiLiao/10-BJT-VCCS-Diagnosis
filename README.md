@@ -300,11 +300,6 @@ spread = M × Vbe(Q12) ≈ 1.55V … 3.6V     (target ≈ 2.4–2.6V for 4 junct
 target lands at RV2 ≈ 1.1–1.5k, i.e. ~25% of travel
 ```
 
-#### 🟠 7. Q12 is not thermally coupled to the output devices
-Q12 is a TO-126 vertical in the mid-left signal cluster; the output devices are TO-264 on the top-edge heatsink. A VBE multiplier only compensates thermal drift if it **tracks the temperature of the devices it biases**.
-**Effect:** as the output stage heats at 10A, its Vbe falls, quiescent current rises, which heats it further — classic thermal runaway. The 0.22Ω ballasts help but are not a substitute.
-**Fix:** relocate Q12 onto the output heatsink (or bond it thermally) in the next spin.
-
 #### 🟠 8. COMMAND has no DC return
 `/COMMAND` = `J1.1`, `C21.1` (100pF to SGND), `U2.3 (+IN)`. **No resistor to ground.** If J1 is ever unplugged, +IN floats on 30pA of bias current and the output can wander anywhere.
 **Fix:** 10k–100k from COMMAND to SGND.
@@ -371,7 +366,6 @@ Bourns 3296W. "Fully clockwise" requires **25 revolutions** — the measured 3k�
 - [ ] Trim RV2 by watching **ballast voltages**, not junction voltages
 
 **Design fixes for next spin (priority order):**
-- [ ] 🔴 Move feedback tap from HV_DRIVE_NODE to COIL_DRIVE + add compensation
 - [ ] 🔴 Separate the DP50IP ±15V supply from the op-amp rails
 - [ ] 🔴 Assign a footprint to NT1 (or fit a 0Ω link)
 - [ ] 🟠 Permanent E/D bias circuit + 30pF noise cap
