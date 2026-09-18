@@ -7,9 +7,9 @@
 - 🔧 **Diagnosed & recovered** a dead legacy MOSFET/IGBT current-source prototype — traced a failed IGBT gate driver, resolved ground-loop and thermal issues
 - 🔁 **Redesigned from scratch**: precision op-amp (OPA455) + discrete BJT push-pull output stage, replacing the old MOSFET/IGBT topology
 - 🛡️ **Added a 5-diode protection network** to prevent transistor degradation from reverse-bias stress during power cycling
-- ✅ **Ground loop on new board — resolved**: switched from a shared bipolar PSU to individual PSUs per rail
-- 🔴 **Root cause found for 2nd bring-up fault**: −30V rail was pinned to max current regardless of tuning — traced to **D5 and D6 wired backwards** (design-file-level diode orientation error, not per-unit damage). Final confirmation (direct voltage measurement + physical inspection) still pending.
-- 🚧 **Status:** root cause identified, rework/re-verification in progress
+- ✅ **Fault #1 SOLVED — floating OPA455 E/D pin.** Left unconnected per datasheet's "self-enables" note, it measured only **0.06V** above E/D Com — inside the disable window. The output stage sat at 160kΩ, dragging the predrive network to the negative rail and turning the whole PNP output bank hard on. Fixed with a 10k/4.7k divider holding E/D at ~4.8V; op-amp now tracks correctly (+IN 4V → OUT 4V).
+- 🔴 **Fault #2 OPEN — SGND and PGND are not connected.** Measured **200kΩ** between them; the design has no intentional single-point tie. Op-amp section has no defined reference vs. the power section → negative rail still collapses to ~1.4V with 3 of 5 PNP devices conducting. Next test: manually bridge the grounds at the PSU.
+- 🚧 **Status:** running at ±15V for bring-up; one fault fixed, one identified and awaiting test
 
 ---
 
@@ -32,7 +32,7 @@ This document consolidates the project's full history — the original prototype
 | Original thesis | — | Mithilesh Kumar Parit's PhD thesis establishes the target performance (500µs response @ 1A/2A steps, 4-axis Helmholtz coil driving) |
 | Prototype build | documented July 7, 2026 | 4-unit enclosure (X/Y/Z/MOT), MOSFET+IGBT linear VCCS topology, breadboard construction |
 | Recovery / debug pass | 2026 (Evernote log) | Circuit recovered from storage; Y-axis smoke incident, X-axis IGBT driver found dead, response times re-measured, low-side redesign explored |
-| New amplifier redesign | current | OPA455-based op-amp + discrete complementary BJT push-pull (EF2) output stage, replacing the MOSFET/IGBT linear-VCCS approach; PCB fabricated and under bring-up |
+| New amplifier redesign | current | OPA455-based op-amp + discrete complementary BJT push-pull (EF2) output stage, replacing the MOSFET/IGBT linear-VCCS approach; PCB fabricated, 2 boards built, under bring-up |
 
 ---
 
@@ -142,84 +142,133 @@ A **voltage-controlled voltage source (VCVS)** built around a precision high-vol
 **Signal path:** `COMMAND → OPA455 (+IN) → HV_DRIVE_NODE (op-amp output) → predrive/bias network (Q12 VBE multiplier) → Q13/Q14 driver pair (first EF stage) → 5× paralleled complementary output pairs Q2–Q11 (second EF stage) → COIL_DRIVE`
 
 ### 4.2 Key Stages
-- **U2 (OPA455IDDAR):** high-voltage precision op-amp, powered from local ±30V_OP rails (4.7µF + 100nF local decoupling)
+- **U2 (OPA455IDDAR):** high-voltage precision op-amp, powered from local ±30V_OP rails (4.7µF + 100nF local decoupling). Pin 2 (−IN) and pin 6 (OUT) are the same net (HV_DRIVE_NODE) → **unity-gain follower with the BJT output stage outside the feedback loop** (see §4.5 for implications). PowerPAD (pin 9) tied to V− per datasheet requirement.
 - **Q12 (BD139) VBE multiplier ("bias spreader"):** sets Class-AB quiescent bias between NPN_PREDRIVE and PNP_PREDRIVE. Base current sourced via R2 (10K) from HV_DRIVE_NODE; R23 (2.2K, fixed) + RV2 (trim pot) form the divider. Trim range covers roughly 2.0–3.3V bias spread for RV2 ≈ 0–2K, bracketing the ~2.4–2.9V needed across the full 4-junction quiescent loop.
 - **Q13/Q14 (MJE15032/MJE15033):** first-stage complementary driver pair, emitters form NPN_DRIVE_BUS / PNP_DRIVE_BUS
 - **Q2–Q11 (5× MJL21194 NPN / MJL21193G PNP pairs):** paralleled output stage, each with 2.2Ω base resistor + 0.22Ω emitter ballast resistor for current sharing, driving common **COIL_DRIVE** node
 - **D1/D2 flyback diodes:** COIL_DRIVE clamped to +30V/−30V rails, backed by **1000µF bulk caps** on each rail — provides fast forced-discharge path for coil energy on shutdown (~290µs to zero from 10A, vs. 1.35ms natural L/R decay)
-- **R1 (100Ω):** bridges NPN_DRIVE_BUS to PNP_DRIVE_BUS, a driver-stage minimum-current bleed (~12–14mA) keeping Q13/Q14 out of a dead zone near crossover; independent of and non-conflicting with the protection diodes below
+- **R1 (100Ω):** bridges NPN_DRIVE_BUS to PNP_DRIVE_BUS, a driver-stage minimum-current bleed (~12–14mA) keeping Q13/Q14 out of a dead zone near crossover
 
-### 4.3 Reverse VEBO Protection (added during this redesign)
+### 4.3 Reverse VEBO Protection
 **Problem identified:** MJL21193/94, MJE15032/33, and BD139 all share a **VEBO of only 5V**, despite high VCEO/VCBO ratings (250–400V). During frequent power-down cycling, the small local op-amp supply caps (4.7µF) collapse much faster than the main 1000µF bulk rail caps — this asymmetry can force >5V reverse bias across base-emitter junctions, causing cumulative hFE degradation over repeated power cycles.
 
-**Fix:** 5 clamp diodes added, each pinning the vulnerable junction's reverse voltage to a single forward diode drop instead of letting it approach the 5V breakdown:
+**Fix:** 5 clamp diodes, each pinning the vulnerable junction's reverse voltage to a single forward diode drop instead of letting it approach the 5V breakdown:
 
-| Diode | Protects | Type | Part | Required Anode | Required Cathode | **As-built (verified from footprint, 2nd board)** |
+| Diode | Protects | Type | Part | Required Anode | Required Cathode | As-built (physical inspection) |
 |---|---|---|---|---|---|---|
-| D6 | Q13 (NPN driver) | NPN | 1N4148W | NPN_DRIVE_BUS (emitter) | NPN_PREDRIVE (base) | ❌ **BACKWARDS** — built anode=HV_DRIVE_NODE/NPN_PREDRIVE, cathode=NPN_DRIVE_BUS |
+| D6 | Q13 (NPN driver) | NPN | 1N4148W | NPN_DRIVE_BUS (emitter) | NPN_PREDRIVE (base) | ✅ Correct |
 | D7 | Q14 (PNP driver) | PNP | 1N4148W | PNP_PREDRIVE (base) | PNP_DRIVE_BUS (emitter) | ✅ Correct |
-| D3 | NPN output bank (Q2/6/8/10 etc.) | NPN | SS34 (Schottky) | COIL_DRIVE (emitter) | NPN_DRIVE_BUS (base) | ✅ Correct |
+| D3 | NPN output bank | NPN | SS34 (Schottky) | COIL_DRIVE (emitter) | NPN_DRIVE_BUS (base) | ✅ Correct |
 | D4 | PNP output bank | PNP | SS34 (Schottky) | PNP_DRIVE_BUS (base) | COIL_DRIVE (emitter) | ✅ Correct |
-| D5 | Q12 (bias spreader) | NPN | 1N4148W | PNP_PREDRIVE (emitter) | NPN_PREDRIVE (collector) | ❌ **BACKWARDS** — built anode=HV_DRIVE_NODE/NPN_PREDRIVE, cathode=PNP_PREDRIVE |
+| D5 | Q12 (bias spreader) | NPN | 1N4148W | PNP_PREDRIVE (emitter) | NPN_PREDRIVE (collector) | ✅ Correct |
 
 Rule used throughout: NPN → clamp emitter-exceeds-base; PNP → clamp base-exceeds-emitter. Because all 5 output devices per bank share the same base bus and same emitter bus, **one diode per bank protects all 5 devices simultaneously** — no need for 10 individual diodes. D5 clamps Q12's collector-emitter span rather than reaching its buried base-tap node, which works because the base always sits resistively between collector and emitter.
 
-**Placement:** D6/D2/D5 placed immediately at their respective transistor pads (D5 piggybacked on C22's existing predrive-to-predrive pads for minimum trace length); D3/D4 placed centrally within their respective 5-device row to minimize worst-case trace inductance to any single device.
+**Placement:** D6/D7/D5 at their respective transistor pads (D5 piggybacked on C22's predrive-to-predrive pads for minimum trace length); D3/D4 centrally within their respective 5-device row to minimize worst-case trace inductance.
 
-**🔴 FINDING (confirmed via footprint/schematic cross-check on 2nd board's PCB files): D5 and D6 are wired backwards.** This is a design-file-level error (footprint/schematic diode orientation), not an assembly or component defect — it reproduces identically on every board built from the same source files, which is exactly what was observed (issue persisted on a brand-new board with independently verified-good components).
-
-**Why D5 backwards is the dominant fault:** D5 sits directly across NPN_PREDRIVE–PNP_PREDRIVE, the two nodes Q12's VBE multiplier is supposed to hold ~2.4–2.9V apart. Built backwards, its forward-conduction condition (anode > cathode) is now `NPN_PREDRIVE > PNP_PREDRIVE` — which is the *normal, designed-in relationship, true 100% of the time*, not a rare fault condition. So instead of sitting silently reverse-biased (as intended) and only engaging during an abnormal event, D5 conducts continuously from power-up, clamping the entire quiescent bias spread down to ~0.5–0.6V (one diode drop) regardless of where RV2 is set. This fully explains the bring-up symptom in §4.4b below. D6 backwards is a real error too (partially shunts Q13's own B-E path in normal operation) but is secondary to D5's effect.
-
-**Verification status:** confirmed at the footprint/schematic level (pad-to-net mapping cross-checked against required polarity table above). **Not yet confirmed by direct in-circuit voltage measurement** (expect ~0.5–0.6V across D5 if the diagnosis is correct, vs. ~2.4–2.9V if healthy) or by physical cathode-band inspection against board silkscreen (would additionally rule out an assembly-house placement error independent of the design file itself).
-
-**Fix path:** correct D5/D6 orientation in the schematic/footprint library association before the next board spin (this is a source-file fix, not per-unit rework); for the boards in hand, rework by desolder-and-flip or a dead-bug bodge diode in the correct orientation for validation.
+> ⚠️ **RETRACTED FINDING — kept as a methodology note.** An earlier analysis, based on reading the diode triangle glyphs in KiCad footprint screenshots, concluded D5 and D6 were wired backwards and blamed them for the bring-up fault. **This was wrong.** Direct physical inspection of the cathode bands on the populated boards confirmed all five diodes are correctly oriented. Lesson: a pixel-level read of a CAD symbol is not evidence — verify polarity against the physical part's cathode band, or better, against a direct electrical measurement. The 0.7V that appeared to "confirm" the backwards-D5 theory turned out to be an unrelated consequence of the real fault (§4.4b).
 
 **Also flagged (unresolved):** thermal coupling of Q12 to the output-device heatsink for proper bias tracking under sustained 10A operation — not yet confirmed against physical layout.
 
 ### 4.4 Board Bring-Up — Issue Log
 
-#### 4.4a Ground loop (RESOLVED)
-**Symptom:** With the board's six power/ground connections all made (no coil, no signal connected), PSU current settled at ~5A. Disconnecting *any single one* of the six restored normal (near-zero) current.
+#### 4.4a Initial 5A idle current (RESOLVED — misdiagnosed at the time)
+**Symptom:** With all six power/ground connections made (no coil, no signal), PSU current settled at ~5A. Disconnecting any single one of the six restored near-zero current.
 
-**Root cause: ground loop from sharing one bipolar PSU for both signal ground (SGND) and power ground (PGND).** The board deliberately separates SGND (op-amp reference) from PGND (main power return) with a single intended tie point; wiring both grounds back to the same PSU terminal created a second, low-resistance tie point externally, closing a loop that a small SGND–PGND potential difference could drive several amps through.
+**Original hypothesis (wrong):** a ground loop from sharing one bipolar PSU across SGND and PGND.
 
-**Fix:** switched to individual/isolated PSUs per rail instead of one shared bipolar supply. **Confirmed resolved** — no coil path connected, no runaway current from the ground loop.
+**Actual cause (established later):** the OPA455's output stage was disabled (§4.4b). With one shared bipolar PSU, SGND and PGND *were* tied through the supply common, so the disabled op-amp's collapsed output dragged the predrive network to the negative rail and turned the PNP output bank hard on — drawing 5A. Unplugging any lead broke that path, which mimicked ground-loop behavior. Switching to individual PSUs per rail removed the ground tie entirely, which stopped the 5A but introduced the floating-ground problem now tracked as §4.4c.
 
-#### 4.4b PNP rail pinned to max current, unresponsive to tuning (ROOT CAUSE IDENTIFIED, pending final confirmation)
-**Symptom:** After resolving 4.4a, a second, distinct fault emerged: the −30V (PNP) side of the output stage always pulls PSU current limit (10A), regardless of RV2 trim position or input command voltage. With +30V off, the −30V side still pulls max current. With only +30V on (−30V off), no current flows at all. **Reproduced identically on a second, independently assembled board** with individually verified-good components (no shorted transistors, healthy flyback diodes, correctly-functioning RV2 pot).
+#### 4.4b Op-amp output stage disabled — floating E/D pin (✅ ROOT CAUSE CONFIRMED AND FIXED)
+**Symptom:** The negative rail always pulls PSU current limit regardless of RV2 position or input command. With +30V off, −30V still maxes out. With only +30V on, nothing happens. **Reproduced identically on a second, independently assembled board** with individually verified-good components.
 
-**Diagnostic path (in order, ruling out each candidate):**
-1. Q12 (BD139) — diode-tested, no shorts found. Cleared.
-2. D1/D2 flyback diodes — D2 isolated and tested: healthy (open one direction, ~0.3V forward the other). D1 not yet isolated-tested but in-circuit reading was consistent with D2's, not separately suspicious.
-3. Paralleled PNP output transistors (Q2/Q5/Q7/Q9/Q11) — pinout confirmed against board nets (base→2.2Ω resistor→drive bus; collector→direct to rail; emitter→0.22Ω resistor→COIL_DRIVE), consistent with schematic. In-circuit C-E readings that initially looked suspicious (~0.06V) were later understood as a side-effect of the D1/D2 in-circuit measurement ambiguity, not independent transistor faults.
-4. RV2 (trim pot) — pin 2–3 short confirmed to be an intentional wiper-to-end tie (standard trim-pot wear protection technique), not a fault; full 0.6–3kΩ sweep confirmed on pin 1–3 while rotating. **RV2 cleared.**
-5. **D5 and D6 (predrive protection diodes) — confirmed wired backwards** via footprint/schematic net cross-check (see §4.3). **This is the identified root cause.**
+**Diagnostic path (each candidate ruled out in turn):**
+1. **Q12 (BD139)** — diode-tested, no shorts. Cleared.
+2. **D1/D2 flyback diodes** — D2 isolated and tested healthy (open one way, ~0.3V forward the other). Cleared.
+3. **PNP output transistors (Q2/Q5/Q7/Q9/Q11)** — pinout confirmed against board nets (pad 1 base → 2.2Ω → drive bus; pad 2 collector → rail; pad 3 emitter → 0.22Ω → COIL_DRIVE). In-circuit C-E readings that looked suspicious (~0.06V) were an artifact of parallel paths through D1/D2, not device faults. Cleared.
+4. **RV2 (trim pot)** — the pin 2–3 "short" is an intentional wiper-to-end tie (standard trim-pot wear protection); full 0.6Ω–3kΩ sweep confirmed on pin 1–3. Cleared.
+5. **D5/D6 orientation** — investigated and **retracted** (see §4.3 note). Cleared.
+6. **OPA455 E/D (enable/disable) pin — CONFIRMED ROOT CAUSE.**
 
-**Mechanism:** D5, built backwards, continuously clamps the NPN_PREDRIVE–PNP_PREDRIVE bias spread to ~0.5–0.6V instead of allowing Q12/RV2 to set the designed ~2.4–2.9V — starving the entire 4-junction bias loop regardless of RV2 position, and consistent with reproducing identically on a second board (a design-file-level fault, not a per-unit component issue).
+**The schematic leaves E_D (pin 8) unconnected, with E_D_Com (pin 1) tied to SGND.** TI's datasheet §7.3.4 says a floating E/D pin self-enables — but only via an internal **1µA** source holding it ~2V above E/D Com, against a disable threshold only 0.8V away. TI explicitly warns this is fragile and easily overpowered.
 
-**Remaining verification before calling this fully closed:**
-- [ ] Direct in-circuit voltage measurement across D5 (NPN_PREDRIVE to PNP_PREDRIVE) — expect ~0.5–0.6V if diagnosis is correct, ~2.4–2.9V if not
-- [ ] Physical cathode-band inspection of D5/D6 against board silkscreen (rules out an assembly-house placement error independent of the design file)
-- [ ] Rework D5/D6 to correct orientation and re-test full bias behavior (RV2 responsiveness, both rails balanced)
+**Measured: E/D sat at just 0.06V above E/D Com** — squarely inside the disable window (spec: disabled = E/D Com to E/D Com + 0.35V).
+
+**Confirming signature:** with +IN commanded to 4V, both −IN and OUT read **2.5V** — attenuated but still tracking. This is the textbook disabled-output behavior from §7.3.4: output impedance rises to ~160kΩ while the inputs stay active, so the signal feeds through the 160kΩ against the external network (R2 + R23/RV2 + R24 ≈ 13.5kΩ) and appears reduced. A dead amp would give a rail or nothing; an enabled follower would give a clean 4V.
+
+**This explains every downstream symptom:** op-amp output collapses toward the negative rail → predrive nodes collapse with it → Q14 and the PNP output bank driven hard on → negative rail pinned at current limit → RV2 irrelevant (the bias spreader has no working operating point) → reproduces on every board (it's a schematic-level choice, not damage).
+
+**Fix applied (bench bodge):** resistive divider from +15V_OP → **10kΩ** → E/D (pin 8) → **4.7kΩ** → SGND, giving **~4.8V** on E/D — mid-window (enable = 2.5–5V above E/D Com), under the 7V E/D-to-E/D-Com absolute max, and ~1mA of pull-up (≈20× the pin's ~50µA draw) so leakage can't drag it down.
+
+**Result: ✅ CONFIRMED.** With the divider fitted and only the signal-side rails powered: **+IN = 4V, −IN = 4V, OUT (HV_DRIVE_NODE) = 4V.** The follower closes its loop correctly.
+
+#### 4.4c SGND and PGND are not connected (🔴 OPEN — next test)
+**Symptom:** With the op-amp now working, the negative main rail still collapses. At a 0.17A limit it sits at **−1.4V**; raising the limit to **4A for 5 seconds did not bring the rail up** (still ~−1.2V).
+
+**Measurements taken:**
+| Measurement | Value | Interpretation |
+|---|---|---|
+| −15V rail at board, under limit | −1.2 to −1.4V | Supply is in constant-current mode, output nearly collapsed |
+| Rail voltage vs. current (0.17A → 4A) | ~1.4V → ~1.2V | **Nearly constant across a 20× current range** → forward-biased junctions clamping, *not* a resistive short |
+| Supply terminal vs. board pad | no significant drop | Rules out cable/connector resistance — the load is on the board |
+| PNP_DRIVE_BUS → −15V (unpowered) | 0.5 MΩ | No short |
+| COIL_DRIVE → +15V (unpowered) | 800 kΩ | Normal |
+| COIL_DRIVE → −15V (unpowered) | 80 kΩ | Asymmetric vs. +15V side, but far too high to draw 0.2A — benign junction/D2 leakage |
+| Voltage across R1 (100Ω) | 0.389V → 3.9mA | **No driver shoot-through** — Q13/Q14 are not the current path |
+| Ballast resistors, PNP side (0.22Ω) | **3 of 5 at 24mV** (≈109mA each, ~327mA total) | **The PNP output bank is the load** |
+| Ballast resistors, NPN side | all 0V | NPN bank fully off — one-sided conduction, not shoot-through |
+| RV2 position during all of the above | max resistance = **minimum** bias spread | The pot has no authority over this fault |
+| **SGND to PGND resistance** | **200 kΩ** | 🔴 **The two grounds are not actually tied** |
+
+**Root cause (identified, test pending):** the design separates SGND (op-amp reference) from PGND (power return) but has **no intentional single-point tie** — the 200kΩ is just semiconductor leakage. The op-amp section therefore has no defined potential relative to the power section, so the drive delivered to Q13/Q14 and the output bank is arbitrary. It has settled somewhere that forward-biases the PNP bank, which matches the measured 3-of-5 PNP conduction with the NPN bank completely off.
+
+Two further details consistent with this reading:
+- The 3-of-5 split (rather than all five) is expected near-crossover behavior: at 24mV the 0.22Ω ballasts provide almost no degeneration, so the three devices with the lowest Vbe hog the current. Not a defect in its own right.
+- RV2 was at minimum-bias throughout, so "bias set too high" is excluded as an explanation.
+
+**Next test:** bridge SGND to PGND with a single wire at the PSU common (one point only — a second tie would create the genuine ground loop wrongly diagnosed in §4.4a), then bring up at 0.2A limit with +IN = 0V and check:
+- [ ] Does the negative rail now reach −15V instead of clamping at 1.4V?
+- [ ] Do the PNP ballast resistors drop to ~0V?
+- [ ] Does NPN_PREDRIVE → PNP_PREDRIVE land in the 2.4–2.9V range and respond to RV2?
+
+**Design fix for next spin:** add a deliberate single-point SGND–PGND bridge (net tie, 0Ω link, or ferrite). A split-ground design needs exactly one; this board has none.
+
+### 4.5 Latent Issues Found During Bring-Up (not yet causing failures)
+
+- **🔴 C22 (1µF) violates the OPA455 capacitive load spec by ~5000×.** C22 sits across the predrive nodes, connected to the op-amp output through only R26 = 10Ω. The datasheet rates `CLOAD Capacitive load drive` at **200pF**. This is a genuine stability risk that was completely masked while the output stage was disabled — it only becomes visible now that the amp actually drives. **Action:** scope HV_DRIVE_NODE for oscillation as soon as the rails come up; if present, add a proper isolation resistor between OUT and the predrive node, or relocate C22. A DMM in AC mode is *not* sufficient to detect this (oscillation will be in the 100kHz–MHz range, beyond most handheld AC-volts bandwidth).
+- **Status Flag (pin 5) is left unconnected**, so overtemperature and overcurrent faults are invisible. Both also produce a high-impedance output — the same signature as E/D shutdown. **Action:** add a 10kΩ pull-up to 5V (referenced to E/D Com) and a test point; low = active fault.
+- **Feedback is taken at the op-amp output, not after the output stage.** Pin 2 (−IN) and pin 6 (OUT) share the HV_DRIVE_NODE net, making this a unity-gain follower with the entire EF2 BJT stage *outside* the loop. Consequence: the output transistors' Vbe drops and crossover distortion are **not corrected by feedback**, so COIL_DRIVE will not accurately track COMMAND. For a precision current driver this is a real limitation — consider moving the feedback tap to COIL_DRIVE (with appropriate compensation) on the next revision.
+- **E/D needs a permanent fix, not just the bench divider.** TI recommends an external current source from V+ sufficient to hold the enable level above the shutdown threshold, plus a 30pF cap from E/D to a low-impedance source for noise immunity.
 
 ---
 
 ## 5. Consolidated Open Items
 
-**Resolved this session:**
-- [x] ~~Diagnose the 5A idle-current ground-loop symptom~~ — resolved by switching to individual PSUs per rail (§4.4a)
-- [x] ~~Confirm all 5 protection diode polarities~~ — done: D3, D4, D7 correct; **D5 and D6 confirmed wired backwards** (§4.3, §4.4b)
-- [x] ~~Verify RV2 pot behavior~~ — confirmed working correctly (intentional wiper-to-end tie, full sweep range)
+**Resolved:**
+- [x] ~~5A idle-current symptom~~ — actually caused by the disabled op-amp output stage, not a ground loop (§4.4a)
+- [x] ~~Confirm all 5 protection diode polarities~~ — all five confirmed **correct** by physical cathode-band inspection; earlier "D5/D6 backwards" finding retracted (§4.3)
+- [x] ~~Verify RV2 pot behavior~~ — working correctly (intentional wiper-to-end tie, full sweep range)
+- [x] ~~Diagnose PNP rail pinned at current limit~~ — **OPA455 E/D pin floating at 0.06V → output stage disabled** (§4.4b)
+- [x] ~~Fix E/D~~ — 10k/4.7k divider holds E/D at ~4.8V; follower confirmed working (+IN 4V → OUT 4V)
 
-**Still open:**
-- [ ] Direct in-circuit voltage confirmation across D5 (expect ~0.5–0.6V) — final confirmation of the backwards-diode diagnosis
-- [ ] Physical cathode-band inspection of D5/D6 vs. board silkscreen — rules out assembly error vs. design-file error
-- [ ] Rework D5/D6 on existing board(s) to correct orientation; re-test full bias behavior after fix
-- [ ] Correct D5/D6 orientation in schematic/footprint source files before any further board spins
+**Open — immediate:**
+- [ ] **Bridge SGND to PGND at a single point and re-test** (§4.4c) — the current blocker
+- [ ] After the bridge: verify negative rail reaches −15V, PNP ballasts drop to ~0V, bias spread reaches 2.4–2.9V and responds to RV2
+- [ ] Scope HV_DRIVE_NODE for oscillation from the C22 capacitive load (§4.5)
+
+**Open — design fixes for next board spin:**
+- [ ] Add permanent E/D bias circuit (external current source from V+, or on-board divider) + 30pF noise cap
+- [ ] Add a deliberate single-point SGND–PGND tie (net tie / 0Ω / ferrite)
+- [ ] Add isolation resistor between OPA455 OUT and C22, or relocate C22
+- [ ] Bring Status Flag out to a test point with a 10kΩ pull-up to 5V
+- [ ] Reconsider feedback tap location (currently before the output stage — Vbe drops uncorrected)
+
+**Open — deferred:**
 - [ ] Confirm thermal coupling of Q12 to the output-device heatsink
-- [ ] Verify D1/D2 flyback diode current/energy rating against repetitive 44mJ shutdown pulses (L ≈ 0.886mH, 10A, τ ≈ 1.35ms coil time constant)
-- [ ] Isolated (out-of-circuit) test of D1, to fully match the confirmation already done on D2
-- [ ] Decide whether any Phase 3 low-side MOSFET / IPM H-bridge work is still relevant, or fully superseded by the Phase 4 linear amplifier approach
+- [ ] Verify D1/D2 flyback diode rating against repetitive 44mJ shutdown pulses
+- [ ] Isolated (out-of-circuit) test of D1, matching the confirmation already done on D2
+- [ ] Bring the design up to full ±30V rails (bring-up currently running at ±15V)
+- [ ] Decide whether any Phase 3 low-side MOSFET / IPM H-bridge work is still relevant
 
 ---
 
@@ -228,4 +277,18 @@ Rule used throughout: NPN → clamp emitter-exceeds-base; PNP → clamp base-exc
 - **Coil parameters (as measured):** τ = L/R_dc = 1.35ms, R_dc = 0.656Ω → **L ≈ 0.886mH**
 - **Stored energy at 10A:** E = ½LI² ≈ **44mJ** per full-current shutdown event
 - **Forced discharge time (via D1/D2 + 1000µF rail caps):** dI/dt ≈ V_clamp/L ≈ 34,700 A/s → **≈290µs to zero from 10A**
-- **VBE multiplier (Q12) trim math:** M = 1 + R2/(R23+RV2) = 1 + 10000/(2200+RV2); target M ≈ 4–4.8 for a ~2.4–2.9V quiescent spread across the 4-junction loop
+- **VBE multiplier (Q12) trim math:** M = 1 + R2/(R23+RV2) = 1 + 10000/(2200+RV2); target M ≈ 4–4.8 for a ~2.4–2.9V quiescent spread across the 4-junction loop. **Max pot resistance = minimum bias spread** (safe starting position)
+- **E/D divider:** 15V × 4.7k/(10k+4.7k) ≈ **4.8V**; divider current ≈ 1.0mA vs. E/D pin draw ≈ 50µA
+- **Ballast resistor current readout:** V across 0.22Ω ÷ 0.22 = device current. 24mV ≈ 109mA; 22mV ≈ 100mA
+
+---
+
+## 7. Debugging Methodology Notes
+
+Lessons worth carrying forward from this bring-up:
+
+1. **Verify polarity physically, not from CAD screenshots.** The retracted D5/D6 finding cost real time. Cathode bands on populated parts, or a direct electrical measurement, are evidence; a triangle glyph read at low resolution is not.
+2. **Check that measurements are internally consistent before building a theory on them.** Several dead ends came from numbers that didn't add up (a Vbe of 0.12V alongside a claimed ~29mA of conduction). When the arithmetic disagrees, re-measure before theorizing.
+3. **A collapsed rail invalidates everything downstream of it.** Predrive voltages measured while the negative rail sat at −1.4V were consequences, not causes.
+4. **Constant voltage across a wide current range = junction clamping; voltage proportional to current = resistive short.** This distinction (1.4V at 0.17A vs 1.2V at 4A) is what ruled out a hard short and redirected the search.
+5. **Don't skip "is it even enabled?" on parts with shutdown pins.** The datasheet said a floating E/D self-enables; in practice a 1µA pull-up against a 0.8V threshold does not survive real-world leakage. Read the fine print in the enable/disable section, not just the summary table.
