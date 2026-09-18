@@ -9,7 +9,6 @@
 - 🛡️ **Added a 5-diode protection network** to prevent transistor degradation from reverse-bias stress during power cycling
 - ✅ **Fault #1 SOLVED — floating OPA455 E/D pin.** Measured **0.06V** above E/D Com, inside the disable window; output stage sat at 160kΩ. Fixed with a 10k/4.7k divider holding E/D at ~4.8V; op-amp now tracks correctly (+IN 4V → OUT 4V).
 - 🔴 **Fault #2 ROOT CAUSE — feedback is taken at the op-amp output, not at COIL_DRIVE.** `U2.2 (−IN)`, `U2.6 (OUT)` and `Q13.1 (B)` are all the *same net*, so COIL_DRIVE idles **2 Vbe (~1.2V) below COMMAND** with no way for the loop to correct it. With the output shorted to PGND through the current sensor, the PNP bank sinks current trying to reach −1.2V — exactly the observed one-sided conduction and rail collapse.
-- 🚨 **Netlist audit found 3 more latent bugs**, including one that will **destroy a $600 current transducer** the moment the rails go to ±30V, and a net tie with **no footprint assigned** (why SGND/PGND measure 200kΩ apart).
 - 🚧 **Status:** running at ±15V for bring-up; full netlist audit complete (§4.6), bench verification of the offset theory pending
 
 ---
