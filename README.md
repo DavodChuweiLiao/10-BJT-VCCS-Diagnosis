@@ -2,6 +2,8 @@
 
 ## TL;DR
 
+Read Coil Driver Documentation for full log
+
 Bipolar ±10–12.5 A linear current driver for the X/Y/Z/MOT magnetic bias coils of a cold-atom experiment, targeting sub-100 µs response.
 
 - **Legacy prototype recovered:** a MOSFET/IGBT linear current source that had stopped working. Traced the X-axis failure to a dead IGBT gate driver and worked through grounding and thermal issues.
